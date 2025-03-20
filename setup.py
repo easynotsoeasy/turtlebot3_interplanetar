@@ -22,6 +22,7 @@ setup(
         'console_scripts': [
             'control_gui = turtlebot3_interplanetar.control_gui:main',
             'speaker_node = turtlebot3_interplanetar.speaker_node:main',
+            'speaker_node_text = turtlebot3_interplanetar.speaker_node_text:main',
             'control_node = turtlebot3_interplanetar.control_node:main',
             'energy_node = turtlebot3_interplanetar.energy_node:main',
         ],
