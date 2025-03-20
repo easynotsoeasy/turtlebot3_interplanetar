@@ -20,10 +20,10 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'control_gui = turtlebot3_gui.control_gui:main',
-            'speaker_node = voice_controlled_turtlebot.speaker_node:main',
-            'control_node = voice_controlled_turtlebot.control_node:main',
-            'energy_node = voice_controlled_turtlebot.energy_node:main',
+            'control_gui = turtlebot3_interplanetar.control_gui:main',
+            'speaker_node = turtlebot3_interplanetar.speaker_node:main',
+            'control_node = turtlebot3_interplanetar.control_node:main',
+            'energy_node = turtlebot3_interplanetar.energy_node:main',
         ],
     },
 )
