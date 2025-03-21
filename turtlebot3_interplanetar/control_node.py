@@ -37,6 +37,19 @@ class ControlNode(Node):
         self.energy = min(100.0, self.energy)
         self.publish_energy()
     
+    def get_duration(self, command):
+        number_words = {
+            "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+            "seven": 7, "eight": 8, "nine": 9, "ten": 10
+        }
+        
+        match = re.search(r'(forward|backward|left|right)\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten)(?:\s*seconds?|s)?', command, re.IGNORECASE)
+        
+        if match:
+            duration_str = match.group(2).lower()  # Extracted duration
+            return int(duration_str) if duration_str.isdigit() else number_words.get(duration_str, 2)  # Convert words to numbers
+        return 2
+
     def command_callback(self, msg):
         command = msg.data.lower()
         self.get_logger().info(f'Received command: {command}')
@@ -52,54 +65,37 @@ class ControlNode(Node):
             self.get_logger().info("Not enough energy to move!")
             return
     
-        
         twist = Twist()
         
         if "left" in command:
-            match = re.search(r'left\s+(\d+)s', command)
-            if match:
-                duration = int(match.group(1))
-            else:
-                duration = 2
-
+            duration = self.get_duration(command)
             twist.angular.z = 0.5
-            self.update_energy(-5.0)
-            self.publish_cmd_vel(twist, 2.0)
+            current_energy = self.energy
+            dur  = min(duration, current_energy / 2)
+            self.update_energy(-2.0 * duration)
+            self.publish_cmd_vel(twist, dur)
         
         elif "right" in command:
-
-            match = re.search(r'right\s+(\d+)s', command)
-            if match:
-                duration = int(match.group(1))
-            else:
-                duration = 2
-            
-
+            duration = self.get_duration(command)
             twist.angular.z = -0.5
-            self.update_energy(-5.0)
-            self.publish_cmd_vel(twist, 2.0)
+            current_energy = self.energy
+            dur  = min(duration, current_energy / 2)
+            self.update_energy(-2.0 * duration)
+            self.publish_cmd_vel(twist, dur)
         
         elif "forward" in command:
-            match = re.search(r'forward\s+(\d+)s', command)
-            if match:
-                duration = int(match.group(1))
-            else:
-                duration = 2 
-            
+            duration = self.get_duration(command)
             twist.linear.x = 0.2
+            dur = min(duration, self.energy / 3.0)
             self.update_energy(-duration * 3.0) 
-            self.publish_cmd_vel(twist, duration)
+            self.publish_cmd_vel(twist, dur)
 
         elif "backward" in command:
-            match = re.search(r'backward\s+(\d+)s', command)
-            if match:
-                duration = int(match.group(1))
-            else:
-                duration = 2
-            
+            duration = self.get_duration(command)
             twist.linear.x = -0.2
+            dur = min(duration, self.energy / 3.0)
             self.update_energy(-duration * 3.0)
-            self.publish_cmd_vel(twist, duration)
+            self.publish_cmd_vel(twist, dur)
 
         elif "stop" in command:
             twist.linear.x = 0.0
