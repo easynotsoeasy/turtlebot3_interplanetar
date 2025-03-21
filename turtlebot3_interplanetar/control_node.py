@@ -57,10 +57,17 @@ class ControlNode(Node):
         if "heal" in command:
             self.update_energy(25.0)
             return
+        
         elif "kaboom" in command:
             self.update_energy(50.0)
             return
-    
+        
+        elif "stop" in command:
+            twist.linear.x = 0.0
+            twist.angular.z = 0.0
+            self.vel_publisher.publish(twist)
+            return
+
         if self.energy <= 0:
             self.get_logger().info("Not enough energy to move!")
             return
@@ -97,10 +104,7 @@ class ControlNode(Node):
             self.update_energy(-duration * 3.0)
             self.publish_cmd_vel(twist, dur)
 
-        elif "stop" in command:
-            twist.linear.x = 0.0
-            twist.angular.z = 0.0
-            self.vel_publisher.publish(twist)
+        
     
     def publish_cmd_vel(self, twist_msg, duration):
         self.vel_publisher.publish(twist_msg)
