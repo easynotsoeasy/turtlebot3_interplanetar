@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import tkinter as tk
+from tkinter import ttk
 import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
@@ -9,6 +10,7 @@ import threading
 from nav_msgs.msg import Odometry
 import tf_transformations
 import math
+from std_msgs.msg import Float32MultiArray
 
 GRID_SIZE = 20  
 CELL_SIZE = 20  
@@ -17,6 +19,7 @@ BOT_RADIUS = 5
 canvas = None
 bot_dot = None
 odom_label = None
+rover_stats_label = None
 
 def update_position_label(text):
     """Update the Tkinter label with odometry data."""
@@ -33,12 +36,19 @@ def update_bot_position(x, y):
         canvas.coords(bot_dot, center_x - BOT_RADIUS, center_y + BOT_RADIUS,
                       center_x + BOT_RADIUS, center_y - BOT_RADIUS)
 
+def update_rover_stats(text):
+    global rover_stats_label
+    if rover_stats_label is not None:
+        rover_stats_label.config(text=text)
 class ControlNode(Node):
     def __init__(self):
         super().__init__("turtlebot3_control")
         self.current_x = 0.0
         self.current_y = 0.0
         self.current_yaw = 0.0
+        self.current_battery = 0
+        self.current_linear_velocity = 0.0
+        self.current_latency = 0.0
 
         self.subscription = self.create_subscription(
             Odometry, "/odom", self.odom_callback, 10
@@ -47,6 +57,11 @@ class ControlNode(Node):
         self.stop_timer = None
         self.rotation_done = threading.Event()
         self.rotation_done.set()
+
+        self.rover_stats_sub = self.create_subscription(
+            Float32MultiArray, "/rover_stats", self.rover_stats_callback, 10
+        )
+
 
     def publish_cmd_vel(self, twist_msg, duration):
         self.pub.publish(twist_msg)
@@ -150,6 +165,14 @@ class ControlNode(Node):
         self.current_y = y
         self.current_yaw = euler[2]
 
+    def rover_stats_callback(self, msg):
+        self.current_battery = msg.data[0]
+        self.current_linear_velocity = msg.data[1]
+        self.current_latency = msg.data[2]
+        text = f"Battery: {self.current_battery}%, Linear Velocity: {self.current_linear_velocity}, Latency: {self.current_latency}"
+        update_rover_stats(text)
+        
+
     def calculate_angle(self, x, y):
         dx = x - self.current_x
         dy = y - self.current_y
@@ -188,14 +211,33 @@ def ros_spin(node):
     rclpy.shutdown()
 
 def main():
-    global canvas, bot_dot, odom_label  
+    global canvas, bot_dot, odom_label, rover_stats_label
 
     rclpy.init()
     node = ControlNode()
 
     root = tk.Tk()
     root.title("Turtlebot3 Control")
-    root.geometry("800x800")
+    root.geometry("900x900")
+    root.configure(bg='#f0f0f0')
+    style = ttk.Style()
+    style.theme_use('clam')
+    style.configure('TFrame', background='#f0f0f0')
+    style.configure('TButton', font=('Helvetica', 14), padding=5)
+    style.configure('TLabel', background='#f0f0f0', font=('Helvetica', 12))
+    style.configure('Horizontal.TScale', background='#f0f0f0')
+
+    main_frame = ttk.Frame(root)
+    main_frame.pack(padx=20, pady=20, fill='both', expand=True)
+
+
+    auto_frame = ttk.LabelFrame(main_frame, text=" Autonomous Control ", padding=15)
+    auto_frame.grid(row=0, column=0, padx=10, pady=10, sticky='nsew')
+
+  
+
+    auto_frame = ttk.LabelFrame(main_frame, text=" Autonomous Control ", padding=15)
+    auto_frame.grid(row=0, column=0, padx=10, pady=10, sticky='nsew')
 
     def on_press_forward(event):
         linear_velocity = velocity_slider.get()
@@ -214,21 +256,7 @@ def main():
     def on_release(event):
         node.stop()
 
-    def btn_stop_click():
-        node.stop()
-
-    def btn_forward_click():
-        node.forward()
-
-    def btn_backward_click():
-        node.backward()
-
-    def btn_left_click():
-        node.left()
-
-    def btn_right_click():
-        node.right()
-
+        
     def on_click(event):
         x, y = event.x, event.y
         print(f"Pixel coordinates: ({x}, {y})")
@@ -237,13 +265,17 @@ def main():
         map_x = grid_x - GRID_SIZE / 2
         map_y = GRID_SIZE / 2 - grid_y
         print(f"Map coordinates: ({map_x}, {map_y})")
-        threading.Thread(target=node.move_bot, args=(map_x, map_y, velocity_slider.get())).start()
+        threading.Thread(target=node.move_bot, args=(map_x, map_y, 0.3)).start()
 
 
-    velocity_slider = tk.Scale(root, from_=0.0, to=1.0, resolution=0.01, orient="horizontal", label="Velocity")
-    velocity_slider.set(0.2)
+    rover_stats_label = ttk.Label(auto_frame, text="Battery: 0%, Linear Velocity: 0, Latency: 0")
+    rover_stats_label.pack()
 
-    canvas = tk.Canvas(root, width=GRID_SIZE * CELL_SIZE, height=GRID_SIZE * CELL_SIZE, bg="white")
+
+    ttk.Label(auto_frame, text="Click anywhere to move robot to position:").pack()
+    canvas = tk.Canvas(auto_frame, width=GRID_SIZE*CELL_SIZE, height=GRID_SIZE*CELL_SIZE, bg="white", highlightthickness=0)
+    canvas.pack(pady=10)    
+
     for i in range(GRID_SIZE):
         for j in range(GRID_SIZE):
             x1, y1 = i * CELL_SIZE, j * CELL_SIZE
@@ -256,42 +288,72 @@ def main():
     )
     canvas.bind("<Button-1>", on_click)
 
-    odom_label = tk.Label(root, text="Position: x=0.00, y=0.00")
+    odom_label = ttk.Label(auto_frame, text="Position: x=0.00, y=0.00")
+    odom_label.pack()
 
-    btn_forward = tk.Button(root, text="Forward")
+    manual_frame = ttk.LabelFrame(main_frame, text=" Manual Control ", padding=15)
+    manual_frame.grid(row=1, column=0, padx=10, pady=10, sticky='nsew')
+
+
+
+    velocity_frame = ttk.Frame(manual_frame)
+    velocity_frame.pack(pady=10)
+
+    velocity_var = tk.DoubleVar()
+    velocity_var.set(0.2)
+
+    ttk.Label(velocity_frame, text="Linear Velocity:").pack(side='left')
+
+    velocity_display = ttk.Label(velocity_frame, textvariable=velocity_var, width=4)
+    velocity_display.pack(side='left', padx=(0, 10))
+
+    velocity_slider = ttk.Scale(velocity_frame, from_=0.0, to=1.0, length=200,variable=velocity_var)
+    velocity_slider.pack(side='left', padx=10)
+
+    def update_velocity_display(*args):
+        velocity_var.set(round(velocity_var.get(), 2))
+        
+    velocity_var.trace_add("write", update_velocity_display)
+
+
+    controls_frame = ttk.Frame(manual_frame)
+    controls_frame.pack(pady=10)
+
+
+    btn_forward = ttk.Button(controls_frame, text="↑", width=5)
+    btn_forward.grid(row=0, column=1, padx=5, pady=2)
+    btn_left = ttk.Button(controls_frame, text="←", width=5)
+    btn_left.grid(row=1, column=0, padx=5, pady=2)
+    btn_stop = ttk.Button(controls_frame, text="◼", width=5)
+    btn_stop.grid(row=1, column=1, padx=5, pady=2)
+    btn_right = ttk.Button(controls_frame, text="→", width=5)
+    btn_right.grid(row=1, column=2, padx=5, pady=2)
+    btn_backward = ttk.Button(controls_frame, text="↓", width=5)
+    btn_backward.grid(row=2, column=1, padx=5, pady=2)
+
+
+
     btn_forward.bind("<ButtonPress-1>", on_press_forward)
     btn_forward.bind("<ButtonRelease-1>", on_release)
 
-    btn_backward = tk.Button(root, text="Backward")
     btn_backward.bind("<ButtonPress-1>", on_press_backward)
     btn_backward.bind("<ButtonRelease-1>", on_release)
 
-    btn_left = tk.Button(root, text="Left")
     btn_left.bind("<ButtonPress-1>", on_press_left)
     btn_left.bind("<ButtonRelease-1>", on_release)
 
-    btn_right = tk.Button(root, text="Right")
     btn_right.bind("<ButtonPress-1>", on_press_right)
     btn_right.bind("<ButtonRelease-1>", on_release)
 
-    btn_stop = tk.Button(root, text="Stop", command=btn_stop_click)
-    btn_forward_2s = tk.Button(root, text="Forward 2s", command=btn_forward_click)
-    btn_backward_2s = tk.Button(root, text="Backward 2s", command=btn_backward_click)
-    btn_left_2s = tk.Button(root, text="Left 2s", command=btn_left_click)
-    btn_right_2s = tk.Button(root, text="Right 2s", command=btn_right_click)
+    btn_stop.bind("<Button-1>", on_release)
 
-    velocity_slider.pack()
-    canvas.pack()
-    btn_forward.pack()
-    btn_backward.pack()
-    btn_left.pack()
-    btn_right.pack()
-    btn_stop.pack()
-    odom_label.pack()
-    btn_forward_2s.pack()
-    btn_backward_2s.pack()
-    btn_left_2s.pack()
-    btn_right_2s.pack()
+    
+
+    main_frame.columnconfigure(0, weight=1)
+    auto_frame.columnconfigure(0, weight=1)
+    manual_frame.columnconfigure(0, weight=1)
+
+
 
     ros_thread = threading.Thread(target=ros_spin, args=(node,))
     ros_thread.start()
