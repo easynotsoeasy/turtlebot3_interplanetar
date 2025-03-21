@@ -63,6 +63,7 @@ class ControlNode(Node):
             return
         
         elif "stop" in command:
+            twist = Twist()
             twist.linear.x = 0.0
             twist.angular.z = 0.0
             self.vel_publisher.publish(twist)
