@@ -34,15 +34,12 @@ class ControlNode(Node):
     def update_energy(self, delta):
         self.energy += delta
         self.energy = max(0.0, self.energy)
+        self.energy = min(100.0, self.energy)
         self.publish_energy()
     
     def command_callback(self, msg):
         command = msg.data.lower()
         self.get_logger().info(f'Received command: {command}')
-        
-        if self.energy <= 0:
-            self.get_logger().info("Not enough energy to move!")
-            return
         
         if "heal" in command:
             self.update_energy(25.0)
@@ -50,15 +47,34 @@ class ControlNode(Node):
         elif "kaboom" in command:
             self.update_energy(50.0)
             return
+    
+        if self.energy <= 0:
+            self.get_logger().info("Not enough energy to move!")
+            return
+    
         
         twist = Twist()
         
         if "left" in command:
+            match = re.search(r'left\s+(\d+)s', command)
+            if match:
+                duration = int(match.group(1))
+            else:
+                duration = 2
+
             twist.angular.z = 0.5
             self.update_energy(-5.0)
             self.publish_cmd_vel(twist, 2.0)
         
         elif "right" in command:
+
+            match = re.search(r'right\s+(\d+)s', command)
+            if match:
+                duration = int(match.group(1))
+            else:
+                duration = 2
+            
+
             twist.angular.z = -0.5
             self.update_energy(-5.0)
             self.publish_cmd_vel(twist, 2.0)
@@ -73,7 +89,18 @@ class ControlNode(Node):
             twist.linear.x = 0.2
             self.update_energy(-duration * 3.0) 
             self.publish_cmd_vel(twist, duration)
-        
+
+        elif "backward" in command:
+            match = re.search(r'backward\s+(\d+)s', command)
+            if match:
+                duration = int(match.group(1))
+            else:
+                duration = 2
+            
+            twist.linear.x = -0.2
+            self.update_energy(-duration * 3.0)
+            self.publish_cmd_vel(twist, duration)
+
         elif "stop" in command:
             twist.linear.x = 0.0
             twist.angular.z = 0.0
